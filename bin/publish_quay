@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Publishes images to quay.io:
+PACKAGE_NAME="workflow-execution-server"
+# quay.io/bionano/$workflow-execution-server:$GIT_TAG
+
+set -ev
+# This assumes there is an image to publish
+if [ ! -z "$QUAY_USERNAME" ] && [ ! -z "$QUAY_PASSWORD" ]; then
+	#Make sure we are logged into quay.io
+	docker login --username $QUAY_USERNAME --password $QUAY_PASSWORD quay.io
+
+	GIT_TAG=`git rev-parse HEAD`
+	if [ ! -z "$TRAVIS_COMMIT" ]; then
+		GIT_TAG=$TRAVIS_COMMIT
+	fi
+	GIT_TAG=${GIT_TAG:0:8}
+
+	docker tag $PACKAGE_NAME:$GIT_TAG quay.io/bionano/$PACKAGE_NAME:$GIT_TAG
+	echo "Pushing quay.io/bionano/$PACKAGE_NAME:$GIT_TAG"
+	docker push quay.io/bionano/$PACKAGE_NAME:$GIT_TAG
+else
+	echo "QUAY_USERNAME and QUAY_PASSWORD are not set, skipping docker image push to quay.io";
+fi
