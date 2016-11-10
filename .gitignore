@@ -1,0 +1,6 @@
+.haxelib
+tmp
+output
+node_modules
+build
+build.hxml

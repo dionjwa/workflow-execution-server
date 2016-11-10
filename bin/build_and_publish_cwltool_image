@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+echo "Building, tagging cwltool image to dionjwa/cwltool"
+set -e
+cd lib/cwltool
+git submodule update --init --recursive
+
+GIT_TAG=`git rev-parse HEAD`
+if [ ! -z "$TRAVIS_COMMIT" ]; then
+	GIT_TAG=$TRAVIS_COMMIT
+fi
+GIT_TAG=${GIT_TAG:0:8}
+
+REPOSITORY=docker.io/dionjwa/cwltool
+
+docker build -t $REPOSITORY:$GIT_TAG .
+# docker push $REPOSITORY:$GIT_TAG
+docker tag $REPOSITORY:$GIT_TAG $REPOSITORY:latest
+# docker push $REPOSITORY:latest

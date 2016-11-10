@@ -1,0 +1,7 @@
+[submodule "lib/cloud-compute-cannon"]
+	path = lib/cloud-compute-cannon
+	url = https://github.com/dionjwa/cloud-compute-cannon.git
+[submodule "lib/cwltool"]
+	path = lib/cwltool
+	url = git@github.com:dionjwa/cwltool.git
+	branch = update_docker_runtime

@@ -1,0 +1,9 @@
+etc/haxe/base-nodejs.hxml
+
+-debug
+
+-D excludeccc
+
+-main workflows.server.Server
+
+-js build/server/server-workflow.js

@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+docker run --rm -e HOST_PWD="$PWD" -v /var/run/docker.sock:/var/run/docker.sock -ti -v `pwd`:/app -w /app dionjwa/cwltool:latest $@
