@@ -15,11 +15,14 @@ import js.node.Url;
 import js.node.stream.Readable;
 import js.node.express.Express;
 import js.node.express.Application;
+import js.npm.fsextended.FsExtended;
 
 import minject.Injector;
 
 import promhx.RequestPromises;
 import promhx.RetryPromise;
+
+import workflows.server.services.execution.cwl.ServiceCwlExecutor;
 
 /**
  * Represents a queue of compute jobs in Redis
@@ -122,8 +125,33 @@ class Server
 		app.use(SERVER_API_URL, cast router);
 
 		//TEMP
-		app.post('/pdb_convert', function(res, res, next) {
+		app.get('/pdb_convert/:pdbid', function(req, res, next) {
+			var pdbid = req.params.pdbid;
+			var workflowUuid = js.npm.shortid.ShortId.generate();
+			var hostWorkflowPath = Node.process.env["HOST_PWD"] + '/tmp/$workflowUuid/';
+			var containerWorkflowPath = 'tmp/$workflowUuid/';
+			FsExtended.copyDirSync('/app/client/workflow_convert_pdb', containerWorkflowPath);
+			ServiceCwlExecutor.runWorkflow(hostWorkflowPath, containerWorkflowPath, "download_and_clean.cwl", null, ["--pdbcode", "1c7d"])
+				.then(function(result) {
+					var stdout = result.stdout.replace('\\n', '\n').replace('\\r', '').replace('\\\n', '\n');
+					var startIndex = stdout.indexOf('\n{');
+					stdout = stdout.substr(startIndex);
+					traceGreen('stdout=\n$stdout');
+					var fsOut = ccc.storage.ServiceStorageLocalFileSystem.getService('output/');
+					var outputs :DynamicAccess<CwlFileOutput> = Json.parse(stdout);
+					for (key in outputs.keys()) {
+						var file = outputs.get(key);
+						var newLocation = 'output/$workflowUuid/${file.basename}';
+						trace('${containerWorkflowPath}${file.basename}=>$newLocation');
+						FsExtended.copyFileSync('${containerWorkflowPath}${file.basename}', newLocation);
+						file.location = newLocation;
+					}
 
+					res.send(FsExtended.readFileSync(outputs.get("pdbfile").location).toString());
+				})
+				.catchError(function(err) {
+					res.send(Json.stringify(err));
+				});
 		});
 		//Static file server for client files
 		app.use('/', js.node.express.Express.Static('client/dist'));

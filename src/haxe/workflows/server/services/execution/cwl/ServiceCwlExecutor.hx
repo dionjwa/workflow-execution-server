@@ -36,6 +36,93 @@ class ServiceCwlExecutor
 	inline public static var CWL = 'workflow.cwl';
 	inline public static var JOB_YAML = 'job.yml';
 
+
+	public static function runWorkflow(hostWorkflowPath :String, containerWorkflowPath, workflowFile :String, jobFile :String, ?args :Array<String>) :Promise<{stdout:String,stderr:String}>
+	{
+		//Run the workflow
+		var docker = new Docker({socketPath:'/var/run/docker.sock'});
+
+		var Mounts = [
+			{
+				Source: '/var/run/docker.sock',
+				Destination: '/var/run/docker.sock',
+				Mode: 'rw',//https://docs.docker.com/engine/userguide/dockervolumes/#volume-labels
+				RW: true
+			},
+			{
+				Source: hostWorkflowPath,
+				Destination: '/app',
+				Mode: 'rw',
+				RW: true
+			},
+		];
+		var hostConfig :CreateContainerHostConfig = {};
+		hostConfig.Binds = [];
+		for (mount in Mounts) {
+			hostConfig.Binds.push(mount.Source + ':' + mount.Destination + ':rw');
+		}
+
+		var opts :CreateContainerOptions = {
+			Image: 'dionjwa/cwltool:latest',
+			HostConfig: hostConfig,
+			Env:[
+				'HOST_PWD=$hostWorkflowPath'
+			],
+			WorkingDir: '/app',
+			Cmd:[workflowFile].concat(jobFile != null ? [jobFile] : []).concat(args != null ? args : []),
+			AttachStdout: false,
+			AttachStderr: false,
+			Tty: true,
+		};
+
+
+		var promise = new DeferredPromise();
+
+		Log.debug({log:'run_docker_container', opts:opts});
+		docker.createContainer(opts, function(createContainerError, container) {
+			if (createContainerError != null) {
+				Log.error({log:'error_creating_container', opts:opts, error:createContainerError});
+				promise.boundPromise.reject({dockerCreateContainerOpts:opts, error:createContainerError});
+				return;
+			}
+			Log.info('Created container ${container.id}');
+
+
+			container.attach({logs:true, stream:true, stdout:true, stderr:true}, function(err, stream) {
+				if (err != null) {
+					promise.boundPromise.reject(err);
+					return;
+				}
+
+				var stdoutBuf = new StringBuf();
+				var stdout = util.streams.StreamTools.createTransformStream(function(s :String) {
+					stdoutBuf.add(s);
+					return s;
+				});
+
+				var stderrBuf = new StringBuf();
+				var stderr = util.streams.StreamTools.createTransformStream(function(s :String) {
+					stderrBuf.add(s);
+					return s;
+				});
+				stdout.pipe(Node.process.stdout);
+				stderr.pipe(Node.process.stderr);
+
+				untyped __js__('container.modem.demuxStream({0}, {1}, {2})', stream, stdout, stderr);
+				container.start(function(err, data) {
+					if (err != null) {
+						promise.boundPromise.reject(err);
+						return;
+					}
+				});
+				stream.once('end', function() {
+					promise.resolve({stdout:stdoutBuf.toString(), stderr:stderrBuf.toString()});
+				});
+			});
+		});
+		return promise.boundPromise;
+	}
+
 	public function new ()
 	{
 	}
@@ -135,7 +222,6 @@ class ServiceCwlExecutor
 					}
 					var hostInputFilePath = hostWorkflowPath + fieldName;
 					var containerInputFilePath = containerWorkflowPath + fieldName;
-					// var inputFilePath = containerWorkflowPath + fieldName;
 					Log.info('BusboyEvent.File writing input file $fieldName to $containerInputFilePath encoding=$encoding mimetype=$mimetype stream=${stream != null}');
 
 					stream.on(ReadableEvent.Error, function(err) {
@@ -165,51 +251,19 @@ class ServiceCwlExecutor
 					}
 					var hostInputFilePath = hostWorkflowPath + fieldName;
 					var containerInputFilePath = containerWorkflowPath + fieldName;
-					// if (fieldName == CWL) {
-
-					// 	try {
-					// 		try {
-					// 			jsonrpc = Json.parse(val);
-					// 		} catch (err :Dynamic) {
-					// 			//Try URL-decoding
-					// 			val = StringTools.urlDecode(val);
-					// 			jsonrpc = Json.parse(val);
-					// 		}
-					// 		if (jsonrpc.method == null || jsonrpc.method != Constants.RPC_METHOD_JOB_SUBMIT) {
-					// 			returnError('JsonRpc method ${Constants.RPC_METHOD_JOB_SUBMIT} != ${jsonrpc.method}');
-					// 			return;
-					// 		}
-					// 		if (jsonrpc.method == null || jsonrpc.method != Constants.RPC_METHOD_JOB_SUBMIT) {
-					// 			returnError('JsonRpc method ${Constants.RPC_METHOD_JOB_SUBMIT} != ${jsonrpc.method}');
-					// 			return;
-					// 		}
-
-					// 		inputPath = jsonrpc.params.inputsPath != null ? (jsonrpc.params.inputsPath.endsWith('/') ? jsonrpc.params.inputsPath : jsonrpc.params.inputsPath + '/') : jobId.defaultInputDir();
-					// 		if (jsonrpc.params.inputs != null) {
-					// 			var inputFilesObj = writeInputFiles(jsonrpc.params.inputs, inputPath);
-					// 			promises.push(inputFilesObj.promise.thenTrue());
-					// 			inputFilesObj.inputs.iter(inputFileNames.push);
-					// 		}
-					// 	} catch(err :Dynamic) {
-					// 		Log.error(err);
-					// 		returnError('Failed to parse JSON, err=$err val=$val');
-					// 	}
-					// } else {
-						// var inputFilePath = (jsonrpc.params.inputsPath != null ? (jsonrpc.params.inputsPath.endsWith('/') ? jsonrpc.params.inputsPath : jsonrpc.params.inputsPath + '/') : jobId.defaultInputDir()) + fieldName;
-						var fileWritePromise = fs.writeFile(fieldName, Streamifier.createReadStream(val));
-						fileWritePromise
-							.then(function(_) {
-								Log.info('    finished writing input file $fieldName tp $containerInputFilePath');
-								return true;
-							})
-							.errorThen(function(err) {
-								Log.info('    error writing input file $fieldName tp $containerInputFilePath err=$err');
-								throw err;
-								return true;
-							});
-						promises.push(fileWritePromise);
-						inputFileNames.push(fieldName);
-					// }
+					var fileWritePromise = fs.writeFile(fieldName, Streamifier.createReadStream(val));
+					fileWritePromise
+						.then(function(_) {
+							Log.info('    finished writing input file $fieldName tp $containerInputFilePath');
+							return true;
+						})
+						.errorThen(function(err) {
+							Log.info('    error writing input file $fieldName tp $containerInputFilePath err=$err');
+							throw err;
+							return true;
+						});
+					promises.push(fileWritePromise);
+					inputFileNames.push(fieldName);
 				});
 
 				busboy.on(BusboyEvent.Finish, function() {
@@ -221,117 +275,129 @@ class ServiceCwlExecutor
 							return Promise.whenAll(promises);
 						})
 						.pipe(function(_) {
-							//Run the workflow
-							var docker = new Docker({socketPath:'/var/run/docker.sock'});
-
-							var Mounts = [
-								{
-									Source: '/var/run/docker.sock',
-									Destination: '/var/run/docker.sock',
-									Mode: 'rw',//https://docs.docker.com/engine/userguide/dockervolumes/#volume-labels
-									RW: true
-								},
-								{
-									Source: hostWorkflowPath,
-									Destination: '/app',
-									Mode: 'rw',
-									RW: true
-								},
-							];
-							var hostConfig :CreateContainerHostConfig = {};
-							hostConfig.Binds = [];
-							for (mount in Mounts) {
-								hostConfig.Binds.push(mount.Source + ':' + mount.Destination + ':rw');
-							}
-
-							var opts :CreateContainerOptions = {
-								Image: 'dionjwa/cwltool:latest',
-								HostConfig: hostConfig,
-								Env:[
-									'HOST_PWD=$hostWorkflowPath'
-								],
-								WorkingDir: '/app',
-								Cmd:[CWL, JOB_YAML],
-								AttachStdout: false,
-								AttachStderr: false,
-								Tty: true,
-							};
-
-
-							var promise = new DeferredPromise();
-
-							Log.debug({log:'run_docker_container', opts:opts});
-							docker.createContainer(opts, function(createContainerError, container) {
-								if (createContainerError != null) {
-									Log.error({log:'error_creating_container', opts:opts, error:createContainerError});
-									promise.boundPromise.reject({dockerCreateContainerOpts:opts, error:createContainerError});
-									return;
-								}
-								Log.info('Created container ${container.id}');
-
-
-								container.attach({logs:true, stream:true, stdout:true, stderr:true}, function(err, stream) {
-									if (err != null) {
-										promise.boundPromise.reject(err);
-										return;
-									}
-
-									var stdoutBuf = new StringBuf();
-									var stdout = util.streams.StreamTools.createTransformStream(function(s :String) {
-										stdoutBuf.add(s);
-										return s;
-									});
-
-									var stderrBuf = new StringBuf();
-									var stderr = util.streams.StreamTools.createTransformStream(function(s :String) {
-										stderrBuf.add(s);
-										return s;
-									});
-									stdout.pipe(Node.process.stdout);
-									stderr.pipe(Node.process.stderr);
-
-									untyped __js__('container.modem.demuxStream({0}, {1}, {2})', stream, stdout, stderr);
-									container.start(function(err, data) {
-										if (err != null) {
-											promise.boundPromise.reject(err);
-											return;
-										}
-									});
-									stream.once('end', function() {
-										promise.resolve({stdout:stdoutBuf.toString(), stderr:stderrBuf.toString()});
-									});
-								});
-							});
-							return promise.boundPromise;
+							return runWorkflow(hostWorkflowPath, containerWorkflowPath, CWL, JOB_YAML);
 						})
-						.pipe(function(result :{stdout:String,stderr:String}) {
+						.then(function(result :{stdout:String,stderr:String}) {
 							var stdout = result.stdout.replace('\\n', '\n').replace('\\r', '').replace('\\\n', '\n');
 							var startIndex = stdout.indexOf('\n{');
 							stdout = stdout.substr(startIndex);
 							traceGreen('stdout=\n$stdout');
 							var fsOut = ccc.storage.ServiceStorageLocalFileSystem.getService('output/');
-							try {
-								var outputs :DynamicAccess<CwlFileOutput> = Json.parse(stdout);
-								// var promises = [];
-								for (key in outputs.keys()) {
-									var file = outputs.get(key);
-									var newLocation = 'output/$workflowUuid/${file.basename}';
-									// var workflowPath = Node.process.cwd() + '/tmp/$workflowUuid/';
-									trace('${containerWorkflowPath}${file.basename}=>$newLocation');
-									FsExtended.copyFileSync('${containerWorkflowPath}${file.basename}', newLocation);
-									file.location = newLocation;
-								}
-								returned = true;
-								traceGreen('final outputs $outputs writing response');
-								res.writeHead(200, {'content-type': 'application/json'});
-								res.end(Json.stringify(outputs, null, '  '));
-								return Promise.promise(true);
-							} catch (err :Dynamic) {
-								returned = true;
-								res.writeHead(500, {'content-type': 'application/json'});
-								res.end(err);
-								return Promise.promise(true);
+							var outputs :DynamicAccess<CwlFileOutput> = Json.parse(stdout);
+							for (key in outputs.keys()) {
+								var file = outputs.get(key);
+								var newLocation = 'output/$workflowUuid/${file.basename}';
+								trace('${containerWorkflowPath}${file.basename}=>$newLocation');
+								FsExtended.copyFileSync('${containerWorkflowPath}${file.basename}', newLocation);
+								file.location = newLocation;
 							}
+							return outputs;
+						})
+						// 	//Run the workflow
+						// 	var docker = new Docker({socketPath:'/var/run/docker.sock'});
+
+						// 	var Mounts = [
+						// 		{
+						// 			Source: '/var/run/docker.sock',
+						// 			Destination: '/var/run/docker.sock',
+						// 			Mode: 'rw',//https://docs.docker.com/engine/userguide/dockervolumes/#volume-labels
+						// 			RW: true
+						// 		},
+						// 		{
+						// 			Source: hostWorkflowPath,
+						// 			Destination: '/app',
+						// 			Mode: 'rw',
+						// 			RW: true
+						// 		},
+						// 	];
+						// 	var hostConfig :CreateContainerHostConfig = {};
+						// 	hostConfig.Binds = [];
+						// 	for (mount in Mounts) {
+						// 		hostConfig.Binds.push(mount.Source + ':' + mount.Destination + ':rw');
+						// 	}
+
+						// 	var opts :CreateContainerOptions = {
+						// 		Image: 'dionjwa/cwltool:latest',
+						// 		HostConfig: hostConfig,
+						// 		Env:[
+						// 			'HOST_PWD=$hostWorkflowPath'
+						// 		],
+						// 		WorkingDir: '/app',
+						// 		Cmd:[CWL, JOB_YAML],
+						// 		AttachStdout: false,
+						// 		AttachStderr: false,
+						// 		Tty: true,
+						// 	};
+
+
+						// 	var promise = new DeferredPromise();
+
+						// 	Log.debug({log:'run_docker_container', opts:opts});
+						// 	docker.createContainer(opts, function(createContainerError, container) {
+						// 		if (createContainerError != null) {
+						// 			Log.error({log:'error_creating_container', opts:opts, error:createContainerError});
+						// 			promise.boundPromise.reject({dockerCreateContainerOpts:opts, error:createContainerError});
+						// 			return;
+						// 		}
+						// 		Log.info('Created container ${container.id}');
+
+
+						// 		container.attach({logs:true, stream:true, stdout:true, stderr:true}, function(err, stream) {
+						// 			if (err != null) {
+						// 				promise.boundPromise.reject(err);
+						// 				return;
+						// 			}
+
+						// 			var stdoutBuf = new StringBuf();
+						// 			var stdout = util.streams.StreamTools.createTransformStream(function(s :String) {
+						// 				stdoutBuf.add(s);
+						// 				return s;
+						// 			});
+
+						// 			var stderrBuf = new StringBuf();
+						// 			var stderr = util.streams.StreamTools.createTransformStream(function(s :String) {
+						// 				stderrBuf.add(s);
+						// 				return s;
+						// 			});
+						// 			stdout.pipe(Node.process.stdout);
+						// 			stderr.pipe(Node.process.stderr);
+
+						// 			untyped __js__('container.modem.demuxStream({0}, {1}, {2})', stream, stdout, stderr);
+						// 			container.start(function(err, data) {
+						// 				if (err != null) {
+						// 					promise.boundPromise.reject(err);
+						// 					return;
+						// 				}
+						// 			});
+						// 			stream.once('end', function() {
+						// 				promise.resolve({stdout:stdoutBuf.toString(), stderr:stderrBuf.toString()});
+						// 			});
+						// 		});
+						// 	});
+						// 	return promise.boundPromise;
+						// })
+						// .then(function(result :{stdout:String,stderr:String}) {
+						// 	var stdout = result.stdout.replace('\\n', '\n').replace('\\r', '').replace('\\\n', '\n');
+						// 	var startIndex = stdout.indexOf('\n{');
+						// 	stdout = stdout.substr(startIndex);
+						// 	traceGreen('stdout=\n$stdout');
+						// 	var fsOut = ccc.storage.ServiceStorageLocalFileSystem.getService('output/');
+						// 	var outputs :DynamicAccess<CwlFileOutput> = Json.parse(stdout);
+						// 	for (key in outputs.keys()) {
+						// 		var file = outputs.get(key);
+						// 		var newLocation = 'output/$workflowUuid/${file.basename}';
+						// 		trace('${containerWorkflowPath}${file.basename}=>$newLocation');
+						// 		FsExtended.copyFileSync('${containerWorkflowPath}${file.basename}', newLocation);
+						// 		file.location = newLocation;
+						// 	}
+						// 	return outputs;
+						// })
+						.pipe(function(outputs) {
+							returned = true;
+							traceGreen('final outputs $outputs writing response');
+							res.writeHead(200, {'content-type': 'application/json'});
+							res.end(Json.stringify(outputs, null, '  '));
+							return Promise.promise(true);
 						})
 						.catchError(function(err) {
 							Log.error(err);
