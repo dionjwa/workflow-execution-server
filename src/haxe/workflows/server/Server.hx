@@ -27,90 +27,9 @@ import promhx.RetryPromise;
  */
 class Server
 {
-
-	static function main2()
-	{
-		var stdout = '
-al/bin/cwltool 1.0
-[\'docker\', \'pull\', \'docker.io/busybox:latest\']
-latest: Pulling from library/busybox
-Digest: sha256:29f5d56d12684887bdfa50dcd29fc31eea4aaf4ad3bec43daf19026a7ce69912
-Status: Image is up to date for busybox:latest
-src=file:///app/hello.tar
-[job untar] /tmp/tmp0UpXVn$ docker \\
-    run \\
-    -i \\
-    --volume=/Users/dionamago/autodesk/workflow-execution-server/tmp/ryo4-Vb-g//hello.tar:/var/lib/cwl/stg87cb41dd-d4eb-44ad-b518-99c0d11a9012/hello.tar:ro \\
-    --volume=/Users/dionamago/autodesk/workflow-execution-server/tmp/ryo4-Vb-g/:/var/spool/cwl:rw \\
-    --volume=/Users/dionamago/autodesk/workflow-execution-server/tmp/ryo4-Vb-g/:/tmp:rw \\
-    --workdir=/var/spool/cwl \\
-    --read-only=true \\
-    --user=0 \\
-    --rm \\
-    --env=TMPDIR=/tmp \\
-    --env=HOME=/var/spool/cwl \\
-    docker.io/busybox:latest \\
-    tar \\
-    xf \\
-    /var/lib/cwl/stg87cb41dd-d4eb-44ad-b518-99c0d11a9012/hello.tar \\
-    Hello.java
-self.outdir=/tmp/tmp0UpXVn
-self.successCodes=None
-rcode=0
-(\'self.generatefiles=%s\', [])
-collect_outputs
-outputs={u\'example_out\': {\'checksum\': \'sha1$084144159163a53537389bf205dce76ba47ff7c2\', \'basename\': \'Hello.java\', \'size\': 22, \'location\': \'file:///app/Hello.java\', \'class\': \'File\'}}
-self.output_callback
-[step untar] completion status is success
-cleanup
-done cleanup
-[\'docker\', \'pull\', \'docker.io/java:7\']
-7: Pulling from library/java
-Digest: sha256:9190fed946554cbd6e9922eb478b6417f37b8a2b02067ab1ab5876c42afa432c
-Status: Image is up to date for java:7
-src=file:///app/Hello.java
-    /var/lib/cwl/stg9d44bf05-da04-4809-967a-3b0f90227f2c/Hello.java
-self.outdir=/tmp/tmpfPNyG9
-self.successCodes=None
-rcode=0
-(\'self.generatefiles=%s\', [])
-collect_outputs
-outputs={u\'classfile\': {\'checksum\': \'sha1$$e68df795c0686e9aa1a1195536bd900f5f417b18\', \'basename\': \'Hello.class\', \'size\': 184, \'location\': \'file:///app/Hello.class\', \'class\': \'File\'}}
-self.output_callback
-[step compile] completion status is success
-cleanup
-done cleanup
-[workflow workflow.cwl] outdir is /tmp/tmpAz9cFb
-Final process status is success
-stageFiles
-stageFiles file:///app/Hello.class MapperEnt(resolved=\'/app/Hello.class\', target=u\'/app/Hello.class\', type=\'File\')
-{
-    "classout": {
-        "checksum": "sha1$$e68df795c0686e9aa1a1195536bd900f5f417b18",
-        "basename": "Hello.class",
-        "location": "file:///app/Hello.class",
-        "path": "/app/Hello.class",
-        "class": "File",
-        "size": 184
-    }
-}
-';
-
-		var regex = new EReg("(?:.|\n)*({\n(?:.|\n)*classout(?:.|\n)*}).*", '');
-		// var regex = new EReg(".*(classout).*", '');
-		traceYellow('regex=${regex}');
-		if (regex.match(stdout)) {
-			traceGreen('matched!');
-			trace('matched');
-			var jsonResultString = regex.matched(1);
-			trace('jsonResultString=$jsonResultString');
-		} else {
-			traceRed('not matched');
-		}
-	}
-
 	static function main()
 	{
+		trace(Node.process.env);
 		Node.process.on(ProcessEvent.UncaughtException, function(err) {
 			traceRed('UncaughtException');
 			var errObj = {
@@ -201,6 +120,15 @@ stageFiles file:///app/Hello.class MapperEnt(resolved=\'/app/Hello.class\', targ
 
 		//Server infrastructure. This automatically handles client JSON-RPC remoting and other API requests
 		app.use(SERVER_API_URL, cast router);
+
+		//TEMP
+		app.post('/pdb_convert', function(res, res, next) {
+
+		});
+		//Static file server for client files
+		app.use('/', js.node.express.Express.Static('client/dist'));
+
+
 
 		// var computeURL = 'http://ccc:9000';
 	 //    Log.info('computeURL:'+ computeURL);

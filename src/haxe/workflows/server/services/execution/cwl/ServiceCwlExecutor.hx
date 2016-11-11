@@ -31,10 +31,6 @@ typedef CwlFileOutput = {
 	var size :Int;
 }
 
-
-
-
-
 class ServiceCwlExecutor
 {
 	inline public static var CWL = 'workflow.cwl';
@@ -100,25 +96,31 @@ class ServiceCwlExecutor
 	{
 		traceYellow('handleMultiformCwlExecution');
 		var workflowUuid = ShortId.generate();
-		var workflowPath = Node.process.cwd() + '/tmp/$workflowUuid/';
-		traceYellow('workflowPath=${workflowPath}');
-		var fs = ccc.storage.ServiceStorageLocalFileSystem.getService(workflowPath);
+		var hostWorkflowPath = Node.process.env["HOST_PWD"] + '/tmp/$workflowUuid/';
+		var containerWorkflowPath = 'tmp/$workflowUuid/';
+		traceYellow('hostWorkflowPath=${hostWorkflowPath}');
+		traceYellow('containerWorkflowPath=${containerWorkflowPath}');
+		var fs = ccc.storage.ServiceStorageLocalFileSystem.getService(containerWorkflowPath);
 		Promise.promise(true)
 			.then(function(_) {
 				var promises = [];
 				var returned = false;
 				var jsonrpc :RequestDefTyped<Dynamic> = null;
 				function returnError(err :haxe.extern.EitherType<String, js.Error>) {
-					Log.error('err=$err\njsonrpc=${jsonrpc == null ? "null" : Json.stringify(jsonrpc, null, "\t")}');
+					Log.error('err=$err\njsonrpc=${jsonrpc}');
 					if (returned) return;
+					returned = true;
 					res.writeHead(500, {'content-type': 'application/json'});
 					res.end(Json.stringify({error: err}));
-					returned = true;
 					//Cleanup
 					Promise.whenAll(promises)
 						.then(function(_) {
-							FsExtended.deleteDirSync(workflowPath);
-							Log.info('Deleted job dir err=$err');
+							try {
+								FsExtended.deleteDirSync(containerWorkflowPath);
+							} catch(deleteErr :Dynamic) {
+								Log.error(deleteErr);
+							}
+							Log.info('Deleted job dir $containerWorkflowPath err=$err');
 						});
 				}
 
@@ -128,8 +130,13 @@ class ServiceCwlExecutor
 				var inputPath = null;
 				var deferredFieldHandling = [];//If the fields come in out of order, we'll have to handle the non-JSON-RPC subsequently
 				busboy.on(BusboyEvent.File, function(fieldName, stream, fileName, encoding, mimetype) {
-					Log.info('BusboyEvent.File writing input file $fieldName encoding=$encoding mimetype=$mimetype stream=${stream != null}');
-					var inputFilePath = workflowPath + fieldName;
+					if (returned) {
+						return;
+					}
+					var hostInputFilePath = hostWorkflowPath + fieldName;
+					var containerInputFilePath = containerWorkflowPath + fieldName;
+					// var inputFilePath = containerWorkflowPath + fieldName;
+					Log.info('BusboyEvent.File writing input file $fieldName to $containerInputFilePath encoding=$encoding mimetype=$mimetype stream=${stream != null}');
 
 					stream.on(ReadableEvent.Error, function(err) {
 						Log.error('Error in Busboy reading field=$fieldName fileName=$fileName mimetype=$mimetype error=$err');
@@ -138,14 +145,14 @@ class ServiceCwlExecutor
 						Log.error('Limit event in Busboy reading field=$fieldName fileName=$fileName mimetype=$mimetype');
 					});
 
-					var fileWritePromise = fs.writeFile(inputFilePath, stream);
+					var fileWritePromise = fs.writeFile(fieldName, stream);
 					fileWritePromise
 						.then(function(_) {
-							Log.info('    finished writing input file $fieldName');
+							Log.info('    finished writing input file $fieldName to $containerInputFilePath');
 							return true;
 						})
 						.errorThen(function(err) {
-							Log.info('    error writing input file $fieldName err=$err');
+							Log.info('    error writing input file $fieldName to $containerInputFilePath err=$err');
 							throw err;
 							return true;
 						});
@@ -156,6 +163,8 @@ class ServiceCwlExecutor
 					if (returned) {
 						return;
 					}
+					var hostInputFilePath = hostWorkflowPath + fieldName;
+					var containerInputFilePath = containerWorkflowPath + fieldName;
 					// if (fieldName == CWL) {
 
 					// 	try {
@@ -190,11 +199,11 @@ class ServiceCwlExecutor
 						var fileWritePromise = fs.writeFile(fieldName, Streamifier.createReadStream(val));
 						fileWritePromise
 							.then(function(_) {
-								Log.info('    finished writing input file $fieldName');
+								Log.info('    finished writing input file $fieldName tp $containerInputFilePath');
 								return true;
 							})
 							.errorThen(function(err) {
-								Log.info('    error writing input file $fieldName err=$err');
+								Log.info('    error writing input file $fieldName tp $containerInputFilePath err=$err');
 								throw err;
 								return true;
 							});
@@ -223,7 +232,7 @@ class ServiceCwlExecutor
 									RW: true
 								},
 								{
-									Source: workflowPath,
+									Source: hostWorkflowPath,
 									Destination: '/app',
 									Mode: 'rw',
 									RW: true
@@ -239,7 +248,7 @@ class ServiceCwlExecutor
 								Image: 'dionjwa/cwltool:latest',
 								HostConfig: hostConfig,
 								Env:[
-									'HOST_PWD=$workflowPath'
+									'HOST_PWD=$hostWorkflowPath'
 								],
 								WorkingDir: '/app',
 								Cmd:[CWL, JOB_YAML],
@@ -308,15 +317,17 @@ class ServiceCwlExecutor
 									var file = outputs.get(key);
 									var newLocation = 'output/$workflowUuid/${file.basename}';
 									// var workflowPath = Node.process.cwd() + '/tmp/$workflowUuid/';
-									trace('$workflowPath/${file.basename}=>$newLocation');
-									FsExtended.copyFileSync('$workflowPath/${file.basename}', newLocation);
+									trace('${containerWorkflowPath}${file.basename}=>$newLocation');
+									FsExtended.copyFileSync('${containerWorkflowPath}${file.basename}', newLocation);
 									file.location = newLocation;
 								}
-
+								returned = true;
+								traceGreen('final outputs $outputs writing response');
 								res.writeHead(200, {'content-type': 'application/json'});
 								res.end(Json.stringify(outputs, null, '  '));
 								return Promise.promise(true);
 							} catch (err :Dynamic) {
+								returned = true;
 								res.writeHead(500, {'content-type': 'application/json'});
 								res.end(err);
 								return Promise.promise(true);

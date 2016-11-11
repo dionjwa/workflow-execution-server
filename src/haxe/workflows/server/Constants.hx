@@ -2,7 +2,7 @@ package workflows.server;
 
 class Constants
 {
-	inline public static var SERVER_PORT = 8965;
+	inline public static var SERVER_PORT = 4000;
 
 	inline public static var SERVER_API_URL = '/api';
 	inline public static var SERVER_API_RPC_URL_FRAGMENT = '/rpc';

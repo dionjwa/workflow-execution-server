@@ -33,12 +33,12 @@ class ServiceCwlExecutorTests
 		var promise = new DeferredPromise();
 		js.npm.request.Request.post({url:url, formData: formData},
 			function(err, httpResponse, body) {
-				traceYellow('httpResponse.statusCode=${httpResponse.statusCode}');
-				traceYellow('body=${body}');
 				if (err != null) {
 					promise.boundPromise.reject(err);
 					return;
 				}
+				traceYellow('httpResponse.statusCode=${httpResponse.statusCode}');
+				traceYellow('body=${body}');
 				if (httpResponse.statusCode == 200) {
 					try {
 						promise.resolve(true);
