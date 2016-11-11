@@ -154,7 +154,8 @@ class Server
 				});
 		});
 		//Static file server for client files
-		app.use('/', js.node.express.Express.Static('/app/client/dist'));
+		app.use(js.node.express.Express.Static('/app/client/dist'));
+		app.use('/client', js.node.express.Express.Static('/app/client'));
 
 
 
