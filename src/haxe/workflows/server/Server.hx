@@ -59,12 +59,6 @@ class Server
 		injector.map(Injector).toValue(injector); //Map itself
 
 		Promise.promise(true)
-			// .pipe(function(_) {
-			// 	return setupRedis(injector);
-			// })
-			// .pipe(function(_) {
-			// 	return verifyCCC(injector);
-			// })
 			.then(function(_) {
 				appSetUp(injector);
 				appAddPaths(injector);
@@ -106,11 +100,6 @@ class Server
 		/* @rpc */
 		var serverContext = new t9.remoting.jsonrpc.Context();
 		injector.map(t9.remoting.jsonrpc.Context).toValue(serverContext);
-
-		//Tests
-		// var serviceTests = new workflows.server.tests.ServiceTests();
-		// injector.injectInto(serviceTests);
-		// serverContext.registerService(serviceTests);
 
 		//Workflows
 		var serviceWorkflows = new workflows.server.services.execution.cwl.ServiceCwlExecutor();
@@ -154,27 +143,10 @@ class Server
 				});
 		});
 		//Static file server for client files
-		app.use(js.node.express.Express.Static('/app/client/dist'));
+		app.use(js.node.express.Express.Static('../client/dist'));
 		app.use('/client', js.node.express.Express.Static('/app/client'));
 
-
-
-		// var computeURL = 'http://ccc:9000';
-	 //    Log.info('computeURL:'+ computeURL);
-	 //    var computeProxy = js.npm.httpproxy.HttpProxy.createProxyServer({target: computeURL});
-	 //    app.get('/*', function (req, res) {
-	 //        computeProxy.web(req, res);
-	 //    });
 	}
-
-	// static function setupRedis(injector :Injector) :Promise<Bool>
-	// {
-	// 	return getRedisClient()
-	// 		.then(function(redis) {
-	// 			injector.map(RedisClient).toValue(redis);
-	// 			return true;
-	// 		});
-	// }
 
 	static function setupServer(injector :Injector)
 	{
@@ -219,42 +191,6 @@ class Server
 		Log.debug('Running server functional tests');
 		workflows.server.services.execution.cwl.ServiceCwlExecutorTests.testMultipartRPCSubmission();
 	}
-
-	// static function getRedisClient() :Promise<RedisClient>
-	// {
-	// 	return promhx.RetryPromise.pollDecayingInterval(getRedisClientInternal, 6, 500, 'getRedisClient');
-	// }
-
-	// static function getRedisClientInternal() :Promise<RedisClient>
-	// {
-	// 	var redisParams = {host:'redis', port:6379};
-	// 	var client = RedisClient.createClient(redisParams.port, redisParams.host);
-	// 	var promise = new DeferredPromise();
-	// 	client.once(RedisEvent.Connect, function() {
-	// 		Log.debug({system:'redis', event:RedisEvent.Connect, redisParams:redisParams});
-	// 		//Only resolve once connected
-	// 		if (!promise.boundPromise.isResolved()) {
-	// 			promise.resolve(client);
-	// 		} else {
-	// 			Log.error({log:'Got redis connection, but our promise is already resolved ${redisParams.host}:${redisParams.port}'});
-	// 		}
-	// 	});
-	// 	client.on(RedisEvent.Error, function(err) {
-	// 		if (!promise.boundPromise.isResolved()) {
-	// 			client.end();
-	// 			promise.boundPromise.reject(err);
-	// 		} else {
-	// 			Log.warn({error:err, system:'redis', event:RedisEvent.Error, redisParams:redisParams});
-	// 		}
-	// 	});
-	// 	client.on(RedisEvent.Reconnecting, function(msg) {
-	// 		Log.warn({system:'redis', event:RedisEvent.Reconnecting, reconnection:msg, redisParams:redisParams});
-	// 	});
-	// 	client.on(RedisEvent.End, function() {
-	// 		Log.warn({system:'redis', event:RedisEvent.End, redisParams:redisParams});
-	// 	});
-	// 	return promise.boundPromise;
-	// }
 
 	/**
 	 * Help logging by JSON'ifying error objects.

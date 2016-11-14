@@ -7,6 +7,7 @@ import js.Node;
 import js.node.stream.Readable;
 import js.node.Http;
 import js.node.http.*;
+import js.node.Path;
 import js.npm.docker.Docker;
 import js.npm.busboy.Busboy;
 import js.npm.shortid.ShortId;
@@ -39,88 +40,91 @@ class ServiceCwlExecutor
 
 	public static function runWorkflow(hostWorkflowPath :String, containerWorkflowPath, workflowFile :String, jobFile :String, ?args :Array<String>) :Promise<{stdout:String,stderr:String}>
 	{
-		//Run the workflow
 		var docker = new Docker({socketPath:'/var/run/docker.sock'});
 
-		var Mounts = [
-			{
-				Source: '/var/run/docker.sock',
-				Destination: '/var/run/docker.sock',
-				Mode: 'rw',//https://docs.docker.com/engine/userguide/dockervolumes/#volume-labels
-				RW: true
-			},
-			{
-				Source: hostWorkflowPath,
-				Destination: '/app',
-				Mode: 'rw',
-				RW: true
-			},
-		];
-		var hostConfig :CreateContainerHostConfig = {};
-		hostConfig.Binds = [];
-		for (mount in Mounts) {
-			hostConfig.Binds.push(mount.Source + ':' + mount.Destination + ':rw');
-		}
-
-		var opts :CreateContainerOptions = {
-			Image: 'dionjwa/cwltool:latest',
-			HostConfig: hostConfig,
-			Env:[
-				'HOST_PWD=$hostWorkflowPath'
-			],
-			WorkingDir: '/app',
-			Cmd:[workflowFile].concat(jobFile != null ? [jobFile] : []).concat(args != null ? args : []),
-			AttachStdout: false,
-			AttachStderr: false,
-			Tty: true,
-		};
-
-
-		var promise = new DeferredPromise();
-
-		Log.debug({log:'run_docker_container', opts:opts});
-		docker.createContainer(opts, function(createContainerError, container) {
-			if (createContainerError != null) {
-				Log.error({log:'error_creating_container', opts:opts, error:createContainerError});
-				promise.boundPromise.reject({dockerCreateContainerOpts:opts, error:createContainerError});
-				return;
-			}
-			Log.info('Created container ${container.id}');
-
-
-			container.attach({logs:true, stream:true, stdout:true, stderr:true}, function(err, stream) {
-				if (err != null) {
-					promise.boundPromise.reject(err);
-					return;
+		var Image = 'dionjwa/cwltool:latest';
+		return promhx.DockerPromises.ensureImage(docker, Image)
+			.pipe(function(_) {
+				//Run the workflow
+				var Mounts = [
+					{
+						Source: '/var/run/docker.sock',
+						Destination: '/var/run/docker.sock',
+						Mode: 'rw',//https://docs.docker.com/engine/userguide/dockervolumes/#volume-labels
+						RW: true
+					},
+					{
+						Source: hostWorkflowPath,
+						Destination: '/app',
+						Mode: 'rw',
+						RW: true
+					},
+				];
+				var hostConfig :CreateContainerHostConfig = {};
+				hostConfig.Binds = [];
+				for (mount in Mounts) {
+					hostConfig.Binds.push(mount.Source + ':' + mount.Destination + ':rw');
 				}
 
-				var stdoutBuf = new StringBuf();
-				var stdout = util.streams.StreamTools.createTransformStream(function(s :String) {
-					stdoutBuf.add(s);
-					return s;
-				});
+				var opts :CreateContainerOptions = {
+					Image: Image,
+					HostConfig: hostConfig,
+					Env:[
+						'HOST_PWD=$hostWorkflowPath'
+					],
+					WorkingDir: '/app',
+					Cmd:[workflowFile].concat(jobFile != null ? [jobFile] : []).concat(args != null ? args : []),
+					AttachStdout: false,
+					AttachStderr: false,
+					Tty: true,
+				};
 
-				var stderrBuf = new StringBuf();
-				var stderr = util.streams.StreamTools.createTransformStream(function(s :String) {
-					stderrBuf.add(s);
-					return s;
-				});
-				stdout.pipe(Node.process.stdout);
-				stderr.pipe(Node.process.stderr);
+				var promise = new DeferredPromise();
 
-				untyped __js__('container.modem.demuxStream({0}, {1}, {2})', stream, stdout, stderr);
-				container.start(function(err, data) {
-					if (err != null) {
-						promise.boundPromise.reject(err);
+				Log.debug({log:'run_docker_container', opts:opts});
+				docker.createContainer(opts, function(createContainerError, container) {
+					if (createContainerError != null) {
+						Log.error({log:'error_creating_container', opts:opts, error:createContainerError});
+						promise.boundPromise.reject({dockerCreateContainerOpts:opts, error:createContainerError});
 						return;
 					}
+					Log.info('Created container ${container.id}');
+
+
+					container.attach({logs:true, stream:true, stdout:true, stderr:true}, function(err, stream) {
+						if (err != null) {
+							promise.boundPromise.reject(err);
+							return;
+						}
+
+						var stdoutBuf = new StringBuf();
+						var stdout = util.streams.StreamTools.createTransformStream(function(s :String) {
+							stdoutBuf.add(s);
+							return s;
+						});
+
+						var stderrBuf = new StringBuf();
+						var stderr = util.streams.StreamTools.createTransformStream(function(s :String) {
+							stderrBuf.add(s);
+							return s;
+						});
+						stdout.pipe(Node.process.stdout);
+						stderr.pipe(Node.process.stderr);
+
+						untyped __js__('container.modem.demuxStream({0}, {1}, {2})', stream, stdout, stderr);
+						container.start(function(err, data) {
+							if (err != null) {
+								promise.boundPromise.reject(err);
+								return;
+							}
+						});
+						stream.once('end', function() {
+							promise.resolve({stdout:stdoutBuf.toString(), stderr:stderrBuf.toString()});
+						});
+					});
 				});
-				stream.once('end', function() {
-					promise.resolve({stdout:stdoutBuf.toString(), stderr:stderrBuf.toString()});
-				});
+				return promise.boundPromise;
 			});
-		});
-		return promise.boundPromise;
 	}
 
 	public function new ()
@@ -181,10 +185,10 @@ class ServiceCwlExecutor
 
 	public function handleMultiformCwlExecution(req :IncomingMessage, res :ServerResponse, next :?Dynamic->Void) :Void
 	{
-		traceYellow('handleMultiformCwlExecution');
+		traceYellow('handleMultiformCwlExecution ');
 		var workflowUuid = ShortId.generate();
-		var hostWorkflowPath = Node.process.env["HOST_PWD"] + '/tmp/$workflowUuid/';
-		var containerWorkflowPath = 'tmp/$workflowUuid/';
+		var hostWorkflowPath = Node.process.env["HOST_PWD"] + '/tmp/$workflowUuid';
+		var containerWorkflowPath = 'tmp/$workflowUuid';
 		traceYellow('hostWorkflowPath=${hostWorkflowPath}');
 		traceYellow('containerWorkflowPath=${containerWorkflowPath}');
 		var fs = ccc.storage.ServiceStorageLocalFileSystem.getService(containerWorkflowPath);
@@ -220,8 +224,8 @@ class ServiceCwlExecutor
 					if (returned) {
 						return;
 					}
-					var hostInputFilePath = hostWorkflowPath + fieldName;
-					var containerInputFilePath = containerWorkflowPath + fieldName;
+					var hostInputFilePath = Path.join(hostWorkflowPath, fieldName);
+					var containerInputFilePath = Path.join(containerWorkflowPath, fieldName);
 					Log.info('BusboyEvent.File writing input file $fieldName to $containerInputFilePath encoding=$encoding mimetype=$mimetype stream=${stream != null}');
 
 					stream.on(ReadableEvent.Error, function(err) {
@@ -283,15 +287,20 @@ class ServiceCwlExecutor
 							stdout = stdout.substr(startIndex);
 							traceGreen('stdout=\n$stdout');
 							var fsOut = ccc.storage.ServiceStorageLocalFileSystem.getService('output/');
-							var outputs :DynamicAccess<CwlFileOutput> = Json.parse(stdout);
-							for (key in outputs.keys()) {
-								var file = outputs.get(key);
-								var newLocation = 'output/$workflowUuid/${file.basename}';
-								trace('${containerWorkflowPath}${file.basename}=>$newLocation');
-								FsExtended.copyFileSync('${containerWorkflowPath}${file.basename}', newLocation);
-								file.location = newLocation;
+							try {
+								var outputs :DynamicAccess<CwlFileOutput> = Json.parse(stdout);
+								for (key in outputs.keys()) {
+									var file = outputs.get(key);
+									var newLocation = 'output/$workflowUuid/${file.basename}';
+									trace('${containerWorkflowPath}${file.basename}=>$newLocation');
+									FsExtended.copyFileSync('${containerWorkflowPath}${file.basename}', newLocation);
+									file.location = newLocation;
+								}
+								return outputs;
+							} catch(err :Dynamic) {
+								Log.error({error:err, stdout:result.stdout, stderr:result.stderr});
+								return {};
 							}
-							return outputs;
 						})
 						// 	//Run the workflow
 						// 	var docker = new Docker({socketPath:'/var/run/docker.sock'});
