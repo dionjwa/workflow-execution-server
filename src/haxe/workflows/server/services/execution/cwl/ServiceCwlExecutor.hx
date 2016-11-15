@@ -286,14 +286,15 @@ class ServiceCwlExecutor
 							var startIndex = stdout.indexOf('\n{');
 							stdout = stdout.substr(startIndex);
 							traceGreen('stdout=\n$stdout');
-							var fsOut = ccc.storage.ServiceStorageLocalFileSystem.getService('output/');
+							var basePath = 'output';
+							var fsOut = ccc.storage.ServiceStorageLocalFileSystem.getService(basePath);
 							try {
 								var outputs :DynamicAccess<CwlFileOutput> = Json.parse(stdout);
 								for (key in outputs.keys()) {
 									var file = outputs.get(key);
-									var newLocation = 'output/$workflowUuid/${file.basename}';
-									trace('${containerWorkflowPath}${file.basename}=>$newLocation');
-									FsExtended.copyFileSync('${containerWorkflowPath}${file.basename}', newLocation);
+									var newLocation = Path.join(basePath, workflowUuid, file.basename);
+									trace('${Path.join(containerWorkflowPath, file.basename)}=>$newLocation');
+									FsExtended.copyFileSync(Path.join(containerWorkflowPath, file.basename), newLocation);
 									file.location = newLocation;
 								}
 								return outputs;
