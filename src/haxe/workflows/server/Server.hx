@@ -13,6 +13,7 @@ import js.node.Fs;
 import js.node.Path;
 import js.node.Process;
 import js.node.http.*;
+import js.node.http.ServerResponse;
 import js.node.Http;
 import js.node.Url;
 import js.node.stream.Readable;
@@ -66,7 +67,6 @@ class Server
 				appSetUp(injector);
 				appAddPaths(injector);
 				setupServer(injector);
-				// ServerWebsocket.createWebsocketServer(injector);
 				runTests(injector);
 			});
 	}
@@ -147,33 +147,58 @@ class Server
 		});
 
 		//Convert uploaded PDB
-		app.post('/pdb_convert', function(req, res, next) {
+		app.post('/pdb_convert', function(req, res :js.npm.express.Response, next) {
 			traceCyan('/pdb_convert');
-			var tempPdb = '/tmp/' + js.npm.shortid.ShortId.generate() + '.pdb';
-			var writeStream = Fs.createWriteStream(tempPdb);
-			req.pipe(writeStream);
+
+			var workflowUuid = js.npm.shortid.ShortId.generate();
+			var hostWorkflowPath = Node.process.env["HOST_PWD"] + '/tmp/$workflowUuid/';
+			var containerWorkflowPath = 'tmp/$workflowUuid/';
+			FsExtended.ensureDirSync(containerWorkflowPath);
+			FsExtended.copyDirSync('/app/client/workflow_convert_pdb/workflows', containerWorkflowPath);
+			var pdbfileName = 'upload.pdb';
+			var pdbfilePath = Path.join(containerWorkflowPath, pdbfileName);
 
 			function cleanup() {
 				try {
-					Fs.unlinkSync(tempPdb);
+					FsExtended.deleteDirSync(containerWorkflowPath);
 				} catch(err :Dynamic) {
 					//Ignored
 				}
 			}
+			var infileContent = '
+infile:
+  class: File
+  path: $pdbfileName
+';
+			var infileYamlName = 'pdbfile.yml';
+			FsExtended.writeFileSync(Path.join(containerWorkflowPath, infileYamlName), infileContent);
+
+			var writeStream = Fs.createWriteStream(pdbfilePath);
+			req.pipe(writeStream);
 
 			writeStream.on(WritableEvent.Finish, function() {
-				traceGreen('Finished file writing');
-				var readable = Fs.createReadStream(tempPdb);
-				readable.on(ReadableEvent.Error, function(err) {
-					traceRed(err);
-					cleanup();
-					res.status(500).send(Json.stringify({error:err}));
-				});
-				untyped res.on(WritableEvent.Finish, function() {
-					traceGreen("Finish");
-					cleanup();
-				});
-				readable.pipe(cast res);
+				//Now run the workflow
+				ServiceCwlExecutor.runWorkflow(hostWorkflowPath, containerWorkflowPath, "read_and_clean.cwl", infileYamlName)
+					.then(function(result) {
+						var stdout = result.stdout.replace('\\n', '\n').replace('\\r', '').replace('\\\n', '\n');
+						var startIndex = stdout.indexOf('\n{');
+						stdout = stdout.substr(startIndex);
+						traceGreen('stdout=\n$stdout');
+						var fsOut = ccc.storage.ServiceStorageLocalFileSystem.getService('output/');
+						var outputs :DynamicAccess<CwlFileOutput> = Json.parse(stdout);
+						for (key in outputs.keys()) {
+							var file = outputs.get(key);
+							var newLocation = 'output/$workflowUuid/${file.basename}';
+							trace('${containerWorkflowPath}${file.basename}=>$newLocation');
+							FsExtended.copyFileSync('${containerWorkflowPath}${file.basename}', newLocation);
+							file.location = newLocation;
+						}
+
+						res.send(FsExtended.readFileSync(outputs.get("pdbfile").location).toString());
+					})
+					.catchError(function(err) {
+						res.status(500).send(Json.stringify(err));
+					});
 			});
 			writeStream.on(WritableEvent.Error, function(err) {
 				traceRed(err);
@@ -186,7 +211,64 @@ class Server
 				cleanup();
 				res.status(500).send(Json.stringify({error:err}));
 			});
-			req.pipe(writeStream);
+			res.on(ServerResponseEvent.Finish, function() {
+				cleanup();
+			});
+
+
+
+
+			
+
+
+
+
+
+
+
+
+
+
+
+
+			// var tempPdb = '/tmp/' + js.npm.shortid.ShortId.generate() + '.pdb';
+			// var writeStream = Fs.createWriteStream(tempPdb);
+			// req.pipe(writeStream);
+
+			// function cleanup() {
+			// 	try {
+			// 		Fs.unlinkSync(tempPdb);
+			// 	} catch(err :Dynamic) {
+			// 		//Ignored
+			// 	}
+			// }
+
+			// writeStream.on(WritableEvent.Finish, function() {
+			// 	traceGreen('Finished file writing');
+			// 	var readable = Fs.createReadStream(tempPdb);
+			// 	readable.on(ReadableEvent.Error, function(err) {
+			// 		traceRed(err);
+			// 		cleanup();
+			// 		res.status(500).send(Json.stringify({error:err}));
+			// 	});
+			// 	untyped res.on(WritableEvent.Finish, function() {
+			// 		traceGreen("Finish");
+			// 		cleanup();
+			// 	});
+			// 	readable.pipe(cast res);
+			// });
+			// writeStream.on(WritableEvent.Error, function(err) {
+			// 	traceRed(err);
+			// 	cleanup();
+			// 	res.status(500).send(Json.stringify({error:err}));
+			// });
+			// req.on(ReadableEvent.Error, function(err) {
+			// 	traceRed(ReadableEvent.Error);
+			// 	traceRed(err);
+			// 	cleanup();
+			// 	res.status(500).send(Json.stringify({error:err}));
+			// });
+			// req.pipe(writeStream);
 		});
 
 		//Static file server for client files
@@ -235,8 +317,8 @@ class Server
 	static function runTests(injector :Injector)
 	{
 		//Run internal tests
-		Log.debug('Running server functional tests');
-		workflows.server.services.execution.cwl.ServiceCwlExecutorTests.testMultipartRPCSubmission();
+		// Log.debug('Running server functional tests');
+		// workflows.server.services.execution.cwl.ServiceCwlExecutorTests.testMultipartRPCSubmission();
 	}
 
 	/**
