@@ -36,14 +36,13 @@ class ServiceCwlExecutor
 {
 	inline public static var CWL = 'workflow.cwl';
 	inline public static var JOB_YAML = 'job.yml';
-
+	inline public static var CWLTOOL_DOCKER_IMAGE = 'docker.io/dionjwa/cwltool:7daa0e3f';
 
 	public static function runWorkflow(hostWorkflowPath :String, containerWorkflowPath, workflowFile :String, jobFile :String, ?args :Array<String>) :Promise<{stdout:String,stderr:String}>
 	{
 		var docker = new Docker({socketPath:'/var/run/docker.sock'});
 
-		var Image = 'dionjwa/cwltool:latest';
-		return promhx.DockerPromises.ensureImage(docker, Image)
+		return promhx.DockerPromises.ensureImage(docker, CWLTOOL_DOCKER_IMAGE)
 			.pipe(function(_) {
 				//Run the workflow
 				var Mounts = [
@@ -67,7 +66,7 @@ class ServiceCwlExecutor
 				}
 
 				var opts :CreateContainerOptions = {
-					Image: Image,
+					Image: CWLTOOL_DOCKER_IMAGE,
 					HostConfig: hostConfig,
 					Env:[
 						'HOST_PWD=$hostWorkflowPath'
