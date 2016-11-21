@@ -95,7 +95,7 @@ class Server
 		var app :Application = injector.getValue(Application);
 
 		app.get('/test', function (req, res) {
-	        res.send('OK but currently no tests set up');
+	        res.send('OK but currently no tests set updfdsfsdf');
 	    });
 
 		var router = js.node.express.Express.GetRouter();
@@ -211,6 +211,7 @@ class Server
 			Log.info('Listening http://localhost:$PORT');
 		});
 		app.use('/output', js.node.express.Express.Static('output'));
+		app.use('/workflow*', js.node.express.Express.Static('/app/src/html/anyworkflow'));
 
 		var closing = false;
 		Node.process.on('SIGINT', function() {

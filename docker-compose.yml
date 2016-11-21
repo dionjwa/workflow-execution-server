@@ -1,0 +1,18 @@
+version: '2'
+
+services:
+
+  server:
+    build:
+      context: .
+    command: ["nodemon", "/app/build/server/server-workflow.js"]
+    ports:
+      - "4000:4000"
+    environment:
+      HOST_PWD: "${PWD}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./tmp:/app/server/tmp
+      # Uncomment this if you are doing server development
+      - ./build/server:/app/build/server
+      - ./src/html:/app/src/html
