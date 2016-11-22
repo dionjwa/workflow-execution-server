@@ -184,8 +184,11 @@ class Server
 			});
 		});
 
+		//Serve the metapage
+		app.use('/metapage', js.node.express.Express.Static('./build/web/metapage'));
 		//Static file server for client files
-		app.use(js.node.express.Express.Static('../client/dist'));
+		app.use(js.node.express.Express.Static('./client/dist'));
+		app.use('/node_modules', js.node.express.Express.Static('./node_modules'));
 	}
 
 	static function setupServer(injector :Injector)
@@ -211,7 +214,6 @@ class Server
 			Log.info('Listening http://localhost:$PORT');
 		});
 		app.use('/output', js.node.express.Express.Static('output'));
-		app.use('/workflow*', js.node.express.Express.Static('/app/src/html/anyworkflow'));
 
 		var closing = false;
 		Node.process.on('SIGINT', function() {

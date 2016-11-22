@@ -1,0 +1,14 @@
+{
+  "name": "workflow-execution-metapage",
+  "version": "1.0.0",
+  "description": "Workflow Execution Metapage",
+  "main": "index-pack.js",
+  "scripts": {
+    "build": "mkdir -p ../../../build/web/metapage && cp -r . ../../../build/web/metapage/ && browserify run-workflow.js > ../../../build/web/metapage/run-workflow.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "superagent": "^3.0.0"
+  }
+}

@@ -75,6 +75,7 @@ RUN haxelib newrepo
 ADD ./etc $APP/etc
 RUN haxelib install --always etc/haxe/base.hxml && haxelib install --always etc/haxe/base-nodejs.hxml
 
+ADD ./lib $APP/lib
 ADD ./src $APP/src
 RUN haxe etc/haxe/server-build.hxml
 

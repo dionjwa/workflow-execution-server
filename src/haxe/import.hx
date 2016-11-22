@@ -1,3 +1,6 @@
+#if js
+import js.Node;
+#end
 import haxe.Json;
 import haxe.DynamicAccess;
 import promhx.deferred.*;
