@@ -4,7 +4,8 @@
   "description": "Execute workflows via CLI and REST calls",
   "author": "Dion Whitehead Amago <dion.amago@autodesk.com>",
   "scripts": {
-    "setup": "git submodule update --init --recursive && npm install && haxelib newrepo && haxelib install --always etc/haxe/server-build.hxml && cp etc/haxe/server-build.hxml build.hxml"
+    "setup": "git submodule update --init --recursive && npm install && haxelib newrepo && haxelib install --always etc/haxe/server-build.hxml && cp etc/haxe/server-build.hxml build.hxml",
+    "autobuild-metapage": "chokidar 'src/html/metapage/**' -c 'cd src/html/metapage && npm run build'"
   },
   "dependencies": {
     "aws-sdk": "^2.6.4",

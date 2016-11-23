@@ -1,17 +1,14 @@
 /* Set up the metaframe channel */
 console.log("Initializing workflow metaframe");
-// console.log('window', window);
 var superagent = require('superagent');
-// var request = window.returnExports;
-// console.log('window.returnExports', window.returnExports);
-var metaframe = Metaframe.getChannel();
+global.metaframe = new Metaframe({debug:true});
 
 metaframe.ready.then(function() {
-  console.log('Workflow execution engine metaframe connection ready');
+  metaframe.log('Workflow execution engine metaframe connection ready');
+  metaframe.sendDimensions({width:700,height:500});
 }, function(err) {
-  console.error('Workflow execution engine metaframe connection',err);
+  metaframe.error('Workflow execution engine metaframe connection err=' + JSON.stringify(err));
 });
-
 
 var QueryString = function () {
   // This function is anonymous, is executed immediately and 
@@ -36,25 +33,33 @@ var QueryString = function () {
   return query_string;
 }();
 
-console.log('QueryString', QueryString);
+metaframe.log('QueryString' + JSON.stringify(QueryString));
 
 var inputs = {}
 //Get the workflow url. We'll download the content of that url
-metaframe.registerRpc("InputPipeUpdate", function(params) {
-  if (params.parentId != metaframe.parentId) {
+metaframe.onRemoteMethodCall(function(rpcDefinition) {
+
+  if (rpcDefinition.method != "InputPipeUpdate") {
     return;
   }
+
+  metaframe.log("metaframe.onRemoteMethodCall that wants to execute a workflow " + JSON.stringify(rpcDefinition).substr(0, 200));
+
+  var params = rpcDefinition.params;
   var pipeId = params != null ? params.id : null;
   var pipeValue = params != null ? params.value : null;
 
-  console.log(pipeId + "=" + (pipeValue != null ? pipeValue.substr(0, 20) : null));
+  metaframe.log(pipeId + "=" + (pipeValue != null ? pipeValue.substr(0, 20) : null));
 
   inputs[pipeId] = pipeValue;
 
   if (pipeValue == null) {
-    console.log(pipeId + '=null, not doing any workflow execution');
+    document.getElementById("status").innerHTML = "Status: not running, null inputs";
+    metaframe.log(pipeId + '=null, not doing any workflow execution');
     return;
   }
+
+
 
   // var formData = new FormData();
   // formData.append(pipeId, pipeValue);
@@ -74,7 +79,7 @@ metaframe.registerRpc("InputPipeUpdate", function(params) {
     }
   }
   // var url = 'http://localhost:4000/workflow/run?git=' + QueryString.git + '&cwl=' + QueryString.cwl;
-  console.log('url', url);
+  metaframe.log('url' + url);
 
   var req = superagent.post(url);
 
@@ -85,16 +90,21 @@ metaframe.registerRpc("InputPipeUpdate", function(params) {
   }
   inputs[pipeId] = pipeValue;
 
+  document.getElementById("status").innerHTML = "Status: running";
+
   req.end(function(err, response) {
     if (err != null) {
+      document.getElementById("status").innerHTML = "Status: ran but error: " + err;
       console.error(err);
       return;
     }
 
+    document.getElementById("status").innerHTML = "Status: success ";
     // console.log('body=' + body);
     if (response.statusCode == 200) {
       console.log('Success');
-      console.log("body", response.body);
+      console.log("body" + response.body);
+      console.log("response" + response);
       for (var pipeId in response.body) {
         var localPipeId = pipeId;
         if (response.body.hasOwnProperty(pipeId)) {
@@ -114,7 +124,7 @@ metaframe.registerRpc("InputPipeUpdate", function(params) {
         }
       }
     } else {
-      console.error('non-200 response body=' + response.body);
+      metaframe.error('non-200 response body=' + response.body);
     }
   });
 
@@ -134,11 +144,3 @@ metaframe.registerRpc("InputPipeUpdate", function(params) {
 });
 
 
-axios.get('https://files.rcsb.org/download/1c7d.pdb')
-  .then(function (response) {
-    var pdbData = response.data;
-    metaframe.setInputPipeValue('uploadpdb.pdb', pdbData);
-  })
-  .catch(function (error) {
-    console.error(error);
-  });
