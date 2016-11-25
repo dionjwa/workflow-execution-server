@@ -231,8 +231,8 @@ class Server
 	static function runTests(injector :Injector)
 	{
 		//Run internal tests
-		// Log.debug('Running server functional tests');
-		// workflows.server.services.execution.cwl.ServiceCwlExecutorTests.testMultipartRPCSubmission();
+		Log.debug('Running server functional tests');
+		workflows.server.services.execution.cwl.ServiceCwlExecutorTests.testMultipartRPCSubmission();
 	}
 
 	/**

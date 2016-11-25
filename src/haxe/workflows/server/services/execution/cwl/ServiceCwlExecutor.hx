@@ -38,6 +38,7 @@ class ServiceCwlExecutor
 	inline public static var CWL = 'workflow.cwl';
 	inline public static var JOB_YAML = 'job.yml';
 	inline public static var CWLTOOL_DOCKER_IMAGE = 'docker.io/dionjwa/cwltool:7daa0e3f';
+	// inline public static var CWLTOOL_DOCKER_IMAGE = 'cwltool:latest';
 
 	public static function runWorkflow(hostWorkflowPath :String, containerWorkflowPath, workflowFile :String, jobFile :String, ?args :Array<String>) :Promise<{stdout:String,stderr:String}>
 	{
