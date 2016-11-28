@@ -10,7 +10,7 @@ metaframe.ready.then(function() {
   metaframe.error('Workflow execution engine metaframe connection err=' + JSON.stringify(err));
 });
 
-var QueryString = function () {
+global.QueryString = function () {
   // This function is anonymous, is executed immediately and 
   // the return value is assigned to QueryString!
   var query_string = {};

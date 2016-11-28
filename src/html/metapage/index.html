@@ -20,6 +20,8 @@
     </head>
     <body>
     	<h1>CWL Workflow Execution Metaframe</h1>
+    	<p id="git_url">GIT</p>
+
     	<h1 id="status">Status: idle</h1>
     	<div class="container">
 			<div class="row">
@@ -51,6 +53,17 @@
 				</div>
 			</div>
 		</div>
+
+		<form>
+		  <div class="form-group">
+		    <label for="exampleInputEmail1">Email address</label>
+		    <input type="email" class="form-control" id="exampleInputEmail1" aria-describedby="emailHelp" placeholder="Workflow Authenticate username">
+		  </div>
+		  <div class="form-group">
+		    <label for="exampleInputPassword1">Password</label>
+		    <input type="password" class="form-control" id="exampleInputPassword1" placeholder="Password">
+		  </div>
+		</form>
     </body>
     <script src="/node_modules/browser-request/index.js"></script>
 	<script src="https://unpkg.com/axios/dist/axios.min.js"></script>

@@ -1,3 +1,7 @@
+var urlDisplay = document.getElementById("git_url");
+// console.log('QueryString', QueryString);
+urlDisplay.innerHTML = QueryString.git;
+
 function updateInputs() {
   var inputs = metaframe.getInputs();
   metaframe.log('updateInputs ' + JSON.stringify(inputs).substr(0, 200));
